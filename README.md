@@ -3,7 +3,9 @@ Source code a module I created for managing Entra ID licensing via Graph. It isn
 
 You can install the module [from PowerShell Gallery](https://www.powershellgallery.com/packages/Graph.Licensing/).
 
-## This module needs the following to be already present
+Tested on macOS with PowerShell 7.4. Should work on other OSes too with PowerShell 7.x and above. 
+
+## Pre-requisite modules
 - "Microsoft.Graph.Authentication"
 - "Microsoft.Graph.Groups"
 - "Microsoft.Graph.Users"
