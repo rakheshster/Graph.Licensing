@@ -41,9 +41,7 @@ function Update-MgLicensingData {
             Write-Output "👉 Warning: You will only be able to read group info, not make any changes."
     
         } else {
-            Write-Output "🚫 Missing the required permissions. Are you connected to Graph and have the right permissions?"
-            Write-Output "For example: Connect-MgGraph -Scopes 'Directory.Read.All'"
-            return
+            throw "Missing the required permissions. Are you connected to Graph and have the right permissions? For example: Connect-MgGraph -Scopes 'Directory.Read.All'"
         }
     }
 
@@ -166,14 +164,22 @@ function Update-MgLicensingData {
     }
 
     end {
-        $script:subscribedSkuIdHashTable = $subscribedSkuIdHashTable
-        $script:subscribedSkuNameHashTable = $subscribedSkuNameHashTable
-        $script:skuNameHashTable = $skuNameHashTable
-        $script:skuIdHashTable = $skuIdHashTable
-        $script:planNameHashTable = $planNameHashTable
-        $script:planIdHashTable = $planIdHashTable
-    
-        Write-Output "✔ All done!"
+        if ($subscribedSkuIdHashTable.Count -eq 0 -or $subscribedSkuNameHashTable -eq 0 -or 
+                $skuNameHashTable -eq 0 -or $skuIdHashTable -eq 0 -or 
+                $planNameHashTable  -eq 0 -or $planIdHashTable -eq 0) {
+
+            throw "Missing the required info. Something went wrong."
+
+        } else {
+            $script:subscribedSkuIdHashTable = $subscribedSkuIdHashTable
+            $script:subscribedSkuNameHashTable = $subscribedSkuNameHashTable
+            $script:skuNameHashTable = $skuNameHashTable
+            $script:skuIdHashTable = $skuIdHashTable
+            $script:planNameHashTable = $planNameHashTable
+            $script:planIdHashTable = $planIdHashTable
+        
+            Write-Output "✔ All done!"
+        }
     }
 }
 
@@ -230,16 +236,24 @@ function Get-MgAssignedLicenses {
             $planIdHashTable = $script:planIdHashTable
         }
 
+        if ($subscribedSkuIdHashTable.Count -eq 0 -or $subscribedSkuNameHashTable -eq 0 -or 
+                $skuNameHashTable -eq 0 -or $skuIdHashTable -eq 0 -or 
+                $planNameHashTable  -eq 0 -or $planIdHashTable -eq 0) {
+
+            throw "Missing the required info. Did Update-MgLicensingData successfully?"
+
+        }
+
         if ($PSCmdlet.ParameterSetName -eq "Group") {
             try {
                 $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
             
                 if ($null -eq $groupObj) {
-                    Write-Output "⛔ Couldn't find $GroupName"
+                    throw "Couldn't find group '$GroupName'"
                 }
             
             } catch {
-                Write-Output "⛔ Error searching for ${GroupName} - $($_.Exception.Message)"
+                throw "Error searching for group '${GroupName}' - $($_.Exception.Message)"
             }
 
             $assignedLicenses = $groupObj.AssignedLicenses
@@ -255,11 +269,11 @@ function Get-MgAssignedLicenses {
                 $userObj = Get-MgUser -Filter "UserPrincipalName eq '$UserPrincipalName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
             
                 if ($null -eq $userObj) {
-                    Write-Output "⛔ Couldn't find $GroupName"
+                    throw "Couldn't find user '$UserPrincipalName'"
                 }
             
             } catch {
-                Write-Output "⛔ Error searching for ${GroupName} - $($_.Exception.Message)"
+                throw " Error searching for user '${UserPrincipalName}' - $($_.Exception.Message)"
             }
 
             $assignedLicenses = $userObj.AssignedLicenses
@@ -402,17 +416,17 @@ function Update-MgAssignedLicensePlans {
         [string]$GroupName,
 
         [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User-SkuName")]
-        [Parameter(Position=1,Mandatory=$false,ParameterSetName = "User-SkuId")]
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User-SkuId")]
         [Alias("UPN")]
         [string]$UserPrincipalName,
 
-        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "Group-SkuName")]
-        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User-SkuName")]
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "Group-SkuName")]
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "User-SkuName")]
         [ArgumentCompleter( { $skuNameHashTable.Keys | Sort-Object })]
         [string]$SkuName,
 
-        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "Group-SkuId")]
-        [Parameter(Position=1,Mandatory=$false,ParameterSetName = "User-SkuId")]
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "Group-SkuId")]
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "User-SkuId")]
         [string]$SkuId,
 
         [Switch]$SortPlansByState
@@ -464,17 +478,24 @@ function Update-MgAssignedLicensePlans {
             $planIdHashTable = $script:planIdHashTable
         }
 
+        if ($subscribedSkuIdHashTable.Count -eq 0 -or $subscribedSkuNameHashTable -eq 0 -or 
+                $skuNameHashTable -eq 0 -or $skuIdHashTable -eq 0 -or 
+                $planNameHashTable  -eq 0 -or $planIdHashTable -eq 0) {
+
+            throw "Missing the required info. Did Update-MgLicensingData successfully?"
+
+        }
 
         if ($PSCmdlet.ParameterSetName -match "Group") {
             try {
                 $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
             
                 if ($null -eq $groupObj) {
-                    Write-Output "⛔ Couldn't find $GroupName"
+                    throw "Couldn't find group '$GroupName'"
                 }
             
             } catch {
-                Write-Output "⛔ Error searching for ${GroupName} - $($_.Exception.Message)"
+                throw "Error searching for group '${GroupName}' - $($_.Exception.Message)"
             }
 
             $assignedLicenses = $groupObj.AssignedLicenses
@@ -490,11 +511,11 @@ function Update-MgAssignedLicensePlans {
                 $userObj = Get-MgUser -Filter "UserPrincipalName eq '$UserPrincipalName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
             
                 if ($null -eq $userObj) {
-                    Write-Output "⛔ Couldn't find $GroupName"
+                    throw "Couldn't find user '$UserPrincipalName'"
                 }
             
             } catch {
-                Write-Output "⛔ Error searching for ${GroupName} - $($_.Exception.Message)"
+                throw "Error searching for user '${UserPrincipalName}' - $($_.Exception.Message)"
             }
 
             $assignedLicenses = $userObj.AssignedLicenses
@@ -508,12 +529,15 @@ function Update-MgAssignedLicensePlans {
         if ($PSCmdlet.ParameterSetName -match "SkuName") {
             $SkuId = $skuNameHashTable[$SKuName].SkuId
         }
+
+        if ($PSCmdlet.ParameterSetName -match "SkuId") {
+            $SkuName = $skuIdHashTable[$SkuId].DisplayName
+        }
     }
 
     process {
         if ($assignmentPaths[$SkuId] -eq "Group") {
-            Write-Output "🚫 Unable to make changes as this is a group assignment"
-            return
+            throw "Unable to make changes as this is a group assignment"
         }
 
         $userSelections = $assignedLicenses | Where-Object { $_.SkuId -eq "$SkuId" } | ForEach-Object {
@@ -604,5 +628,232 @@ function Update-MgAssignedLicensePlans {
                 Write-Output "⛔ Something went wrong: $($_.Exception.Message)"
             }
         }
-    }   
+    }
+}
+
+function Add-MgAssignedLicense {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "Group-SkuName")]
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "Group-SkuId")]
+        [string]$GroupName,
+
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User-SkuName")]
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User-SkuId")]
+        [Alias("UPN")]
+        [string]$UserPrincipalName,
+
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "Group-SkuName")]
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "User-SkuName")]
+        [ArgumentCompleter( { $skuNameHashTable.Keys | Sort-Object })]
+        [string]$SkuName,
+
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "Group-SkuId")]
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "User-SkuId")]
+        [string]$SkuId,
+
+        [Switch]$SortPlansByState
+    )
+
+    <#
+    .DESCRIPTION
+    Add (assign) a license SKU to a user or group. While adding you can select the plans too.
+
+    .PARAMETER GroupName
+    The Group you'd like to see the license assignments of. 
+
+    .PARAMETER UserPrincipalName
+    The User you'd like to see the license assignments of. 
+
+    .PARAMETER SkuName
+    The license SKU Name (assigned to the user or group) whose plan details you wish to modify.
+
+    You can enter the SKU Id too instead.
+
+    .PARAMETER SkuId
+    The license SKU Id (assigned to the user or group) whose plan details you wish to modify. 
+
+    You can enter the SKU Name too instead.
+
+    .PARAMETER SortPlansByState
+    By default plans are sorted alphabetically. Use this to sort them by On/ Off state. 
+    #>
+
+    begin {
+        $subscribedSkuIdHashTable = $script:subscribedSkuIdHashTable
+        $subscribedSkuNameHashTable = $script:subscribedSkuNameHashTable
+        $skuNameHashTable = $script:skuNameHashTable
+        $skuIdHashTable = $script:skuIdHashTable
+        $planNameHashTable = $script:planNameHashTable
+        $planIdHashTable = $script:planIdHashTable
+
+        if ($subscribedSkuIdHashTable.Count -eq 0 -or $subscribedSkuNameHashTable -eq 0 -or 
+                $skuNameHashTable -eq 0 -or $skuIdHashTable -eq 0 -or 
+                $planNameHashTable  -eq 0 -or $planIdHashTable -eq 0) {
+            
+            Update-MgLicensingData
+
+            $subscribedSkuIdHashTable = $script:subscribedSkuIdHashTable
+            $subscribedSkuNameHashTable = $script:subscribedSkuNameHashTable
+            $skuNameHashTable = $script:skuNameHashTable
+            $skuIdHashTable = $script:skuIdHashTable
+            $planNameHashTable = $script:planNameHashTable
+            $planIdHashTable = $script:planIdHashTable
+        }
+
+        if ($subscribedSkuIdHashTable.Count -eq 0 -or $subscribedSkuNameHashTable -eq 0 -or 
+                $skuNameHashTable -eq 0 -or $skuIdHashTable -eq 0 -or 
+                $planNameHashTable  -eq 0 -or $planIdHashTable -eq 0) {
+
+            throw "Missing the required info. Did Update-MgLicensingData successfully?"
+
+        }
+
+        if ($PSCmdlet.ParameterSetName -match "Group") {
+            try {
+                $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+            
+                if ($null -eq $groupObj) {
+                    throw "Couldn't find group '$GroupName'"
+                }
+            
+            } catch {
+                throw "Error searching for group '${GroupName}' - $($_.Exception.Message)"
+            }
+
+            $assignedLicenses = $groupObj.AssignedLicenses
+
+            $assignmentPaths = @{}
+            foreach ($skuIdTemp in $assignedLicenses.SkuId) {
+                $assignmentPaths[$skuIdTemp] = "Direct"
+            }
+        }
+
+        if ($PSCmdlet.ParameterSetName -match "User") {
+            try {
+                $userObj = Get-MgUser -Filter "UserPrincipalName eq '$UserPrincipalName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+            
+                if ($null -eq $userObj) {
+                    throw "Couldn't find user '$UserPrincipalName'"
+                }
+            
+            } catch {
+                throw "Error searching for user '${UserPrincipalName}' - $($_.Exception.Message)"
+            }
+
+            $assignedLicenses = $userObj.AssignedLicenses
+
+            $assignmentPaths = @{}
+            foreach ($skuAssignment in $userObj.LicenseAssignmentStates) {
+                $assignmentPaths[$($skuAssignment.SkuId)] = if ($skuAssignment.AssignedByGroup) { "Group" } else { "Direct" }
+            }
+        }
+
+        if ($PSCmdlet.ParameterSetName -match "SkuName") {
+            $SkuId = $skuNameHashTable[$SKuName].SkuId
+        }
+
+        if ($PSCmdlet.ParameterSetName -match "SkuId") {
+            $SkuName = $skuIdHashTable[$SkuId].DisplayName
+        }
+    }
+
+    process {
+        $disabledPlans = @()
+
+        # Using this variable to keep it similar to the other code.
+        $skuAssignedToObject = $SkuId
+
+        # All the plans that are actually available for this license SKU
+        $skuApplicablePlans = ($subscribedSkuIdHashTable[$skuAssignedToObject].PlansIncludedFriendlyName | Where-Object { $_.AppliesTo -eq "User" }).ServicePlanId
+
+        $planStates = foreach ($planId in $skuIdHashTable[$skuAssignedToObject].PlansIncludedIds) {
+            if ($planId -notin $skuApplicablePlans)  { continue }
+
+            [pscustomobject][ordered]@{
+                "PlanName" = $planIdHashTable[$planId].DisplayName
+                "PlanId" = $planId
+                "State" = if ($disabledPlans -contains $planId) { "Off" } else { "On" }
+                # Yes, I repeat this info here and below. I add it here coz it makes it easier to pass this info to other cmdlets later.
+                "SkuName" = $skuIdHashTable[$skuAssignedToObject].DisplayName
+                "SkuId" = $skuAssignedToObject
+            }
+        } 
+        
+        $userSelections = $planStates | Sort-Object -Descending -Property { if ($SortPlansByState) { $_.State } else { $_.PlanName } } | Out-ConsoleGridView -Title "$($skuIdHashTable[$SkuId].DisplayName) - Select plans to disable" 
+
+        if ($userSelections.Count -ne 0) {
+            Write-Output "Please confirm the following actions:"
+
+            foreach ($selection in $userSelections) {
+                $planName = $planIdHashTable[$selection.PlanId].DisplayName
+
+                if ($selection.State -eq "Off") { 
+                    $currentState = "Disabled"
+                    $newState = "Enabled" 
+
+                    # Need to turn this on - so we remove it from the disabled plans
+                    $disabledPlans = @($disabledPlans | Where-Object { $_ -ne $selection.PlanId })
+
+                    Write-Host -ForegroundColor Green "$planName | $currentState => $newState"
+
+                } else {
+                    $currentState = "Enabled" 
+                    $newState = "Disabled"
+
+                    if ($disabledPlans.Count -eq 0) {
+                        $disabledPlans = @($selection.PlanId)
+                    } else {
+                        $disabledPlans = @($disabledPlans + $selection.PlanId)
+                    }
+
+                    Write-Host -ForegroundColor Red "$planName | $currentState => $newState"
+                }
+            }
+
+            do {
+                $confirmation = Read-Host "Ok to proceed? [y/n]"
+            } while ($confirmation -notin "y","n")
+
+            if ($confirmation -eq "n") {
+                Write-Output "Not actioning any changes"
+                return
+            }
+
+        } else {
+            do {
+                $confirmation = Read-Host "Please confirm you'd like to assign the '$SkuName' license SKU [y/n]"
+            } while ($confirmation -notin "y","n")
+
+            if ($confirmation -eq "n") {
+                Write-Output "Not actioning any changes"
+                return
+            }
+        }
+
+        # https://learn.microsoft.com/en-us/graph/api/group-assignlicense?view=graph-rest-1.0&tabs=powershell
+        $params = @{
+            addLicenses = @(
+                @{
+                    disabledPlans = $disabledPlans
+                    skuId = $SkuId
+                }
+            )
+            removeLicenses = @()
+        }
+
+        try {
+            if ($PSCmdlet.ParameterSetName -match "Group") {
+                Set-MgGroupLicense -GroupId $groupObj.Id -BodyParameter $params -ErrorAction Stop | Out-Null
+            }
+    
+            if ($PSCmdlet.ParameterSetName -match "User") {
+                Set-MgUserLicense -UserId $userObj.Id -BodyParameter $params -ErrorAction Stop | Out-Null
+            }
+
+            Write-Output "✔ All done!"
+        } catch {
+            Write-Output "⛔ Something went wrong: $($_.Exception.Message)"
+        }
+    }
 }

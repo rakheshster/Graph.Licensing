@@ -78,7 +78,8 @@
     FunctionsToExport = @(
         "Update-MgLicensingData",
         "Get-MgAssignedLicenses",
-        "Update-MgAssignedLicensePlans"
+        "Update-MgAssignedLicensePlans",
+        "Add-MgAssignedLicense"
     )
     
     # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
@@ -118,7 +119,7 @@
             # IconUri = ''
     
             # ReleaseNotes of this module
-            ReleaseNotes = 'Initial release.'
+            ReleaseNotes = 'New cmdlet to assign a license.'
     
             # Prerelease string of this module
             # Prerelease = ''
