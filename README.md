@@ -1,9 +1,14 @@
 # Graph Licensing Toolkit
-Source code a module I created for managing Entra ID licensing via Graph. 
+Source code of a module I created for managing Entra ID licensing via Graph. 
 
 You can install the module [from PowerShell Gallery](https://www.powershellgallery.com/packages/Graph.Licensing/).
 
-Tested on macOS, Linux, and Windows with PowerShell 7.4. Should work on other OSes too with PowerShell 7.x and above. 
+Tested on macOS, Linux, and Windows with PowerShell 7.4. Should work on other OSes too with PowerShell 7.x and above. It currently has the following cmdlets:
+
+- `Get-MgAssignedLicenses` - view licenses (and plans) assigned to a user or group
+- `Update-MgAssignedLicensePlans` - update the plans of a specific license assigned to a user or group
+- `Add-MgAssignedLicense` - assign a license to a user or group
+- `Get-MgAvailableLicenses` - view all licenses available in the tenant
 
 ## Pre-requisite modules
 This modules depends upon the following. 
