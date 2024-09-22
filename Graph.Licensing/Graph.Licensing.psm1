@@ -186,16 +186,26 @@ function Update-MgLicensingData {
 function Get-MgAssignedLicenses {
     [CmdletBinding()]
     param(
-        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "Group")]
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "Group-SkuName")]
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "Group-SkuId")]
         [string]$GroupName,
 
-        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User")]
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User-SkuName")]
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User-SkuId")]
         [Alias("UPN")]
         [string]$UserPrincipalName,
 
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "Group-SkuName")]
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "User-SkuName")]
+        [ArgumentCompleter( { $skuNameHashTable.Keys | Sort-Object })]
+        [string]$SkuName,
+
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "Group-SkuId")]
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "User-SkuId")]
+        [string]$SkuId,
+        
         [Switch]$ShowPlansOnly,
-        [Switch]$SortPlansByState,
-        [string]$SkuId
+        [Switch]$SortPlansByState
     )
 
     <#
@@ -216,6 +226,9 @@ function Get-MgAssignedLicenses {
 
     .PARAMETER SkuId
     Show only this SkuId. Useful with the -ShowPlansOnly switch. 
+
+    .PARAMETER SkuName
+    Show only this SkuName. Useful with the -ShowPlansOnly switch. 
     #>
 
     begin {
@@ -248,7 +261,7 @@ function Get-MgAssignedLicenses {
 
         }
 
-        if ($PSCmdlet.ParameterSetName -eq "Group") {
+        if ($PSCmdlet.ParameterSetName -match "Group") {
             try {
                 $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
             
@@ -270,7 +283,7 @@ function Get-MgAssignedLicenses {
             $targetSnippet = "Group '${GroupName}'"
         }
 
-        if ($PSCmdlet.ParameterSetName -eq "User") {
+        if ($PSCmdlet.ParameterSetName -match "User") {
             try {
                 $userObj = Get-MgUser -Filter "UserPrincipalName eq '$UserPrincipalName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
             
@@ -290,6 +303,14 @@ function Get-MgAssignedLicenses {
             }
 
             $targetSnippet = "User '${UserPrincipalName}'"
+        }
+
+        if ($PSCmdlet.ParameterSetName -match "SkuName") {
+            $SkuId = $skuNameHashTable[$SKuName].SkuId
+        }
+
+        if ($PSCmdlet.ParameterSetName -match "SkuId") {
+            $SkuName = $skuIdHashTable[$SkuId].DisplayName
         }
     }
 
@@ -427,7 +448,7 @@ function Get-MgAssignedLicenses {
             # Output the selections too just in case. Easy to copy paste for other cmdlets.
             # When doing this add the group or user name; remove the plans.
             foreach ($selection in $userSelections) {
-                if ($PSCmdlet.ParameterSetName -eq "User") {
+                if ($PSCmdlet.ParameterSetName -match "User") {
                     $selection | Add-Member -MemberType NoteProperty -Name "UserPrincipalName" -Value $UserPrincipalName
 
                 } else {
@@ -536,6 +557,8 @@ function Update-MgAssignedLicensePlans {
             foreach ($skuIdTemp in $assignedLicenses.SkuId) {
                 $assignmentPaths[$skuIdTemp] = "Direct"
             }
+
+            $targetSnippet = "Group '${GroupName}'"
         }
 
         if ($PSCmdlet.ParameterSetName -match "User") {
@@ -556,6 +579,8 @@ function Update-MgAssignedLicensePlans {
             foreach ($skuAssignment in $userObj.LicenseAssignmentStates) {
                 $assignmentPaths[$($skuAssignment.SkuId)] = if ($skuAssignment.AssignedByGroup) { "Group" } else { "Direct" }
             }
+
+            $targetSnippet = "User '${UserPrincipalName}'"
         }
 
         if ($PSCmdlet.ParameterSetName -match "SkuName") {
@@ -595,7 +620,7 @@ function Update-MgAssignedLicensePlans {
                     "SkuId" = $skuAssignedToObject
                 }
             }
-        } | Sort-Object -Descending -Property { if ($SortPlansByState) { $_.State } else { $_.PlanName } } | Out-ConsoleGridView -Title "Plans of license '$($skuIdHashTable[$SkuId].DisplayName)' - select to toggle the state"
+        } | Sort-Object -Descending -Property { if ($SortPlansByState) { $_.State } else { $_.PlanName } } | Out-ConsoleGridView -Title "Plans of license '$($skuIdHashTable[$SkuId].DisplayName)' assigned to $targetSnippet - select to toggle the state"
 
         if ($userSelections.Count -ne 0) {
             Write-Output "Please confirm the following actions:"
@@ -657,7 +682,7 @@ function Update-MgAssignedLicensePlans {
 
                 Write-Output "✔ All done!"
             } catch {
-                Write-Output "⛔ Something went wrong: $($_.Exception.Message)"
+                throw "Something went wrong: $($_.Exception.Message)"
             }
         }
     }
@@ -885,7 +910,7 @@ function Add-MgAssignedLicense {
 
             Write-Output "✔ All done!"
         } catch {
-            Write-Output "⛔ Something went wrong: $($_.Exception.Message)"
+            throw "Something went wrong: $($_.Exception.Message)"
         }
     }
 }
