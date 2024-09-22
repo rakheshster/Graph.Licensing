@@ -14,7 +14,7 @@ This modules depends upon the following.
 - "Microsoft.Graph.Identity.DirectoryManagement"
 - "Microsoft.PowerShell.ConsoleGuiTools"
 
-If it weren't for these, this module wouldn't exist! Thank you, to the creators of these, especially `Microsoft.PowerShell.ConsoleGuiTools` which is what I use to drive things. 
+If it weren't for these, this module wouldn't exist! Thank you 😍 to the creators of these, especially `Microsoft.PowerShell.ConsoleGuiTools` which is what I use to drive things. 🙏
 
 ## Screenshots
 
