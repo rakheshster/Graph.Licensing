@@ -337,7 +337,7 @@ function Get-MgAssignedLicenses {
                     $planStates | Sort-Object -Descending -Property { $_.PlanName }
                 }
 
-            } | Out-ConsoleGridView -Title "License Plans assigned to $targetSnippet"
+            } | Out-ConsoleGridView -OutputMode None -Title "Plans assigned to $targetSnippet"
 
         } else {
         # If we are showing licenses to, I want to capture the user selections and then loop into a plan only view for each of their selections :)
@@ -392,7 +392,7 @@ function Get-MgAssignedLicenses {
 
                     # This is the text I show in the title. In case -SkuId is specified, I don't need to do a special case as the loop will only run once.
                     # $targetSnippet never changes, but $targetSnippet2 keeps varies each time
-                    $SkuName = $skuIdHashTable[$SkuId].DisplayName
+                    $SkuName = $skuIdHashTable[$skuAssignedToObject].DisplayName
                     $targetSnippet2 = $targetSnippet + " for license '$SkuName'"
         
                     # All the plans that are actually available for this license SKU
@@ -414,14 +414,13 @@ function Get-MgAssignedLicenses {
                     if ($SortPlansByState) {
                         $planStates | Sort-Object -Descending -Property { $_.State } | 
                             # Don't allow any selections
-                            Out-ConsoleGridView -Title $skuIdHashTable[$skuAssignedToObject].DisplayName -OutputMode None -Title "Plans assigned to $targetSnippet2"
+                            Out-ConsoleGridView -OutputMode None -Title "Plans assigned to $targetSnippet2"
     
                     } else {
                         $planStates | Sort-Object -Descending -Property { $_.PlanName } | 
                             # Don't allow any selections
-                            Out-ConsoleGridView -Title $skuIdHashTable[$skuAssignedToObject].DisplayName -OutputMode None -Title "Plans assigned to $targetSnippet2"
+                            Out-ConsoleGridView -OutputMode None -Title "Plans assigned to $targetSnippet2"
                     }
-        
                 } 
             }
 
@@ -596,7 +595,7 @@ function Update-MgAssignedLicensePlans {
                     "SkuId" = $skuAssignedToObject
                 }
             }
-        } | Sort-Object -Descending -Property { if ($SortPlansByState) { $_.State } else { $_.PlanName } } | Out-ConsoleGridView -Title $skuIdHashTable[$SkuId].DisplayName
+        } | Sort-Object -Descending -Property { if ($SortPlansByState) { $_.State } else { $_.PlanName } } | Out-ConsoleGridView -Title "Plans of license '$($skuIdHashTable[$SkuId].DisplayName)' - select to toggle the state"
 
         if ($userSelections.Count -ne 0) {
             Write-Output "Please confirm the following actions:"
@@ -813,7 +812,7 @@ function Add-MgAssignedLicense {
             }
         } 
         
-        $userSelections = $planStates | Sort-Object -Descending -Property { if ($SortPlansByState) { $_.State } else { $_.PlanName } } | Out-ConsoleGridView -Title "$($skuIdHashTable[$SkuId].DisplayName) - Select plans to disable" 
+        $userSelections = $planStates | Sort-Object -Descending -Property { if ($SortPlansByState) { $_.State } else { $_.PlanName } } | Out-ConsoleGridView -Title "Plans of license '$($skuIdHashTable[$SkuId].DisplayName)' - select plans you wish to disable" 
 
         if ($userSelections.Count -ne 0) {
             Write-Output "Please confirm the following actions:"
