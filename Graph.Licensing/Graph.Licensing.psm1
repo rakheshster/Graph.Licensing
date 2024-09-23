@@ -519,17 +519,23 @@ function Update-MgAssignedLicensePlans {
         [Parameter(Position=0,Mandatory=$true,ParameterSetName = "Group-SkuId")]
         [string]$GroupName,
 
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "GroupId-SkuName")]
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "GroupId-SkuId")]
+        [string]$GroupId,
+
         [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User-SkuName")]
         [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User-SkuId")]
         [Alias("UPN")]
         [string]$UserPrincipalName,
 
         [Parameter(Position=1,Mandatory=$true,ParameterSetName = "Group-SkuName")]
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "GroupId-SkuName")]
         [Parameter(Position=1,Mandatory=$true,ParameterSetName = "User-SkuName")]
         [ArgumentCompleter( { $skuNameHashTable.Keys | Sort-Object } )]
         [string]$SkuName,
 
         [Parameter(Position=1,Mandatory=$true,ParameterSetName = "Group-SkuId")]
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "GroupId-SkuId")]
         [Parameter(Position=1,Mandatory=$true,ParameterSetName = "User-SkuId")]
         [string]$SkuId,
 
@@ -543,12 +549,17 @@ function Update-MgAssignedLicensePlans {
     .PARAMETER GroupName
     The Group you'd like to update the license assignments of. 
 
-    Either of GroupName or UserPrincipalName is mandatory.
+    Either of GroupName, GroupId, or UserPrincipalName is mandatory.
+
+    .PARAMETER GroupId
+    The Group you'd like to see the license assignments of. 
+
+    Either of GroupName, GroupId, or UserPrincipalName is mandatory.
 
     .PARAMETER UserPrincipalName
     The User you'd like to update the license assignments of. 
 
-    Either of GroupName or UserPrincipalName is mandatory.
+    Either of GroupName, GroupId, or UserPrincipalName is mandatory.
 
     .PARAMETER SkuName
     The license SKU Name (assigned to the user or group) whose plan details you wish to modify.
@@ -602,7 +613,12 @@ function Update-MgAssignedLicensePlans {
 
         if ($PSCmdlet.ParameterSetName -match "Group") {
             try {
-                $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                if ($GroupName) {
+                    $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+
+                } else {
+                    $groupObj = Get-MgGroup -GroupId $GroupId -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                }
             
                 if ($null -eq $groupObj) {
                     throw "Couldn't find group '$GroupName'"
@@ -613,6 +629,8 @@ function Update-MgAssignedLicensePlans {
             }
 
             $licenseAssignmentStates = $groupObj.LicenseAssignmentStates
+
+            if ($GroupId) { $GroupName = $groupObj.DisplayName } else { $GroupId = $groupObj.Id }
 
             $targetSnippet = "Group '${GroupName}'"
         }
@@ -764,17 +782,23 @@ function Add-MgAssignedLicense {
         [Parameter(Position=0,Mandatory=$true,ParameterSetName = "Group-SkuId")]
         [string]$GroupName,
 
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "GroupId-SkuName")]
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "GroupId-SkuId")]
+        [string]$GroupId,
+
         [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User-SkuName")]
         [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User-SkuId")]
         [Alias("UPN")]
         [string]$UserPrincipalName,
 
         [Parameter(Position=1,Mandatory=$true,ParameterSetName = "Group-SkuName")]
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "GroupId-SkuName")]
         [Parameter(Position=1,Mandatory=$true,ParameterSetName = "User-SkuName")]
         [ArgumentCompleter( { $skuNameHashTable.Keys | Sort-Object })]
         [string]$SkuName,
 
         [Parameter(Position=1,Mandatory=$true,ParameterSetName = "Group-SkuId")]
+        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "GroupId-SkuId")]
         [Parameter(Position=1,Mandatory=$true,ParameterSetName = "User-SkuId")]
         [string]$SkuId,
 
@@ -786,23 +810,38 @@ function Add-MgAssignedLicense {
     Add (assign) a license SKU to a user or group. While adding you can select the plans too.
 
     .PARAMETER GroupName
-    The Group you'd like to see the license assignments of. 
+    The Group you'd like to assign licenses to.
+
+    Either of GroupName, GroupId, or UserPrincipalName is mandatory.
+
+    .PARAMETER GroupId
+    The Group you'd like to assign licenses to.
+
+    Either of GroupName, GroupId, or UserPrincipalName is mandatory.
 
     .PARAMETER UserPrincipalName
-    The User you'd like to see the license assignments of. 
+    The User you'd like to assign licenses to.
+
+    Either of GroupName, GroupId, or UserPrincipalName is mandatory.
 
     .PARAMETER SkuName
     The license SKU Name (assigned to the user or group) whose plan details you wish to modify.
 
     You can enter the SKU Id too instead.
 
+    Either of SkuName or SkuId is mandatory.
+
     .PARAMETER SkuId
     The license SKU Id (assigned to the user or group) whose plan details you wish to modify. 
 
     You can enter the SKU Name too instead.
 
+    Either of SkuName or SkuId is mandatory.
+
     .PARAMETER SortPlansByState
     By default plans are sorted alphabetically. Use this to sort them by On/ Off state. 
+
+    Optional.
     #>
 
     begin {
@@ -846,14 +885,21 @@ function Add-MgAssignedLicense {
             } catch {
                 throw "Error searching for group '${GroupName}' - $($_.Exception.Message)"
             }
+
+            if ($GroupId) { $GroupName = $groupObj.DisplayName } else { $GroupId = $groupObj.Id }
         }
 
         if ($PSCmdlet.ParameterSetName -match "User") {
             try {
-                $userObj = Get-MgUser -Filter "UserPrincipalName eq '$UserPrincipalName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                if ($GroupName) {
+                    $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+
+                } else {
+                    $groupObj = Get-MgGroup -GroupId $GroupId -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                }
             
-                if ($null -eq $userObj) {
-                    throw "Couldn't find user '$UserPrincipalName'"
+                if ($null -eq $groupObj) {
+                    throw "Couldn't find group '$GroupName'"
                 }
             
             } catch {
@@ -897,35 +943,40 @@ function Add-MgAssignedLicense {
         if ($userSelections.Count -ne 0) {
             Write-Output "`nPlease confirm the following actions:"
 
+            $tempArray = @()
+
             foreach ($selection in $userSelections) {
-                $planName = $planIdHashTable[$selection.PlanId].DisplayName
+                $planName = $planIdHashTable[$selection.More.PlanId].DisplayName
 
                 if ($selection.State -eq "Off") { 
                     $currentState = "Disabled"
                     $newState = "Enabled" 
 
                     # Need to turn this on - so we remove it from the disabled plans
-                    $disabledPlans = @($disabledPlans | Where-Object { $_ -ne $selection.PlanId })
-
-                    Write-Host -ForegroundColor Green "$planName | $currentState => $newState"
+                    $disabledPlans = @($disabledPlans | Where-Object { $_ -ne $selection.More.PlanId })
 
                 } else {
                     $currentState = "Enabled" 
                     $newState = "Disabled"
 
                     if ($disabledPlans.Count -eq 0) {
-                        $disabledPlans = @($selection.PlanId)
+                        $disabledPlans = @($selection.More.PlanId)
                     } else {
-                        $disabledPlans = @($disabledPlans + $selection.PlanId)
+                        $disabledPlans = @($disabledPlans + $selection.More.PlanId)
                     }
+                }
 
-                    Write-Host -ForegroundColor Red "$planName | $currentState => $newState"
+                $tempArray += [pscustomobject][ordered]@{
+                    "Plan" = "$planName"
+                    "Current State" = $currentState
+                    "New State" = $newState
                 }
             }
 
+            $tempArray | Format-Table
+
             do {
                 $confirmation = Read-Host "Ok to proceed? [y/n]"
-
             } while ($confirmation -notin "y","n")
 
             if ($confirmation -eq "n") {
@@ -935,7 +986,7 @@ function Add-MgAssignedLicense {
 
         } else {
             do {
-                $confirmation = Read-Host "Please confirm you'd like to assign the '$SkuName' license SKU [y/n]"
+                $confirmation = Read-Host "`nPlease confirm you'd like to assign the '$SkuName' license SKU [y/n]"
             } while ($confirmation -notin "y","n")
 
             if ($confirmation -eq "n") {
@@ -965,6 +1016,15 @@ function Add-MgAssignedLicense {
             }
 
             Write-Output "✔ All done!"
+
+            if ($PSCmdlet.ParameterSetName -match "Group") {
+                Get-MgAssignedLicenses -GroupId $groupObj.Id -SkuId $SkuId
+            } 
+            
+            if ($PSCmdlet.ParameterSetName -match "User") {
+                Get-MgAssignedLicenses -UserPrincipalName $UserPrincipalName -SkuId $SkuId 
+            }
+            
         } catch {
             throw "Something went wrong: $($_.Exception.Message)"
         }
