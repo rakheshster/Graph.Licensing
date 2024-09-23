@@ -12,7 +12,7 @@
     RootModule = 'Graph.Licensing.psm1'
     
     # Version number of this module.
-    ModuleVersion = '0.0.8'
+    ModuleVersion = '0.0.9'
     
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -111,7 +111,7 @@
             Tags = @("Graph","License","EntraID","SKU","Plan")
     
             # A URL to the license for this module.
-            # LicenseUri = ''
+            LicenseUri = 'https://github.com/rakheshster/PowerShell-GraphLicensing/blob/main/LICENSE'
     
             # A URL to the main website for this project.
             ProjectUri = 'https://github.com/rakheshster/PowerShell-GraphLicensing'
