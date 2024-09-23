@@ -186,26 +186,26 @@ function Update-MgLicensingData {
 function Get-MgAssignedLicenses {
     [CmdletBinding()]
     param(
-        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "Group-SkuName")]
-        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "Group-SkuId")]
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "Group")]
         [string]$GroupName,
 
-        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User-SkuName")]
-        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User-SkuId")]
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "GroupId")]
+        [string]$GroupId,
+
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User")]
         [Alias("UPN")]
         [string]$UserPrincipalName,
 
-        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "Group-SkuName")]
-        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "User-SkuName")]
-        [ArgumentCompleter( { $skuNameHashTable.Keys | Sort-Object })]
+        [Parameter(Mandatory=$false)]
+        [ArgumentCompleter( { $skuNameHashTable.Keys | Sort-Object } )]
         [string]$SkuName,
 
-        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "Group-SkuId")]
-        [Parameter(Position=1,Mandatory=$true,ParameterSetName = "User-SkuId")]
+        [Parameter(Mandatory=$false)]
         [string]$SkuId,
         
         [Switch]$ShowPlansOnly,
-        [Switch]$SortPlansByState
+        [Switch]$SortPlansByState,
+        [Switch]$ShowDirectOnly
     )
 
     <#
@@ -215,20 +215,42 @@ function Get-MgAssignedLicenses {
     .PARAMETER GroupName
     The Group you'd like to see the license assignments of. 
 
+    Either of GroupName, GroupId, or UserPrincipalName is mandatory.
+
+    .PARAMETER GroupId
+    The Group you'd like to see the license assignments of. 
+
+    Either of GroupName, GroupId, or UserPrincipalName is mandatory.
+
     .PARAMETER UserPrincipalName
     The User you'd like to see the license assignments of. 
+
+    Either of GroupName, GroupId, or UserPrincipalName is mandatory.
 
     .PARAMETER ShowPlansOnly
     The default output shows the licenses and you must select one or more to see the plan details. Use this switch to skip that and show all the plans assigned to the user or group across all licenses assigned to it.
 
+    Optional.
+    
     .PARAMETER SortPlansByState
     By default plans are sorted alphabetically. Use this to sort them by On/ Off state. 
+
+    Optional.
 
     .PARAMETER SkuId
     Show only this SkuId. Useful with the -ShowPlansOnly switch. 
 
+    Optional.
+
     .PARAMETER SkuName
     Show only this SkuName. Useful with the -ShowPlansOnly switch. 
+
+    Optional.
+
+    .PARAMETER ShowDirectOnly
+    Show only directly assigned licensing SKUs. 
+
+    Optional.
     #>
 
     begin {
@@ -263,7 +285,12 @@ function Get-MgAssignedLicenses {
 
         if ($PSCmdlet.ParameterSetName -match "Group") {
             try {
-                $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                if ($GroupName) {
+                    $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+
+                } else {
+                    $groupObj = Get-MgGroup -GroupId $GroupId -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                }
             
                 if ($null -eq $groupObj) {
                     throw "Couldn't find group '$GroupName'"
@@ -273,12 +300,9 @@ function Get-MgAssignedLicenses {
                 throw "Error searching for group '${GroupName}' - $($_.Exception.Message)"
             }
 
-            $assignedLicenses = $groupObj.AssignedLicenses
+            $licenseAssignmentStates = $groupObj.LicenseAssignmentStates
 
-            $assignmentPaths = @{}
-            foreach ($skuIdTemp in $assignedLicenses.SkuId) {
-                $assignmentPaths[$skuIdTemp] = "Direct"
-            }
+            if ($GroupId) { $GroupName = $groupObj.DisplayName } else { $GroupId = $groupObj.Id }
 
             $targetSnippet = "Group '${GroupName}'"
         }
@@ -295,124 +319,149 @@ function Get-MgAssignedLicenses {
                 throw " Error searching for user '${UserPrincipalName}' - $($_.Exception.Message)"
             }
 
-            $assignedLicenses = $userObj.AssignedLicenses
-
-            $assignmentPaths = @{}
-            foreach ($skuAssignment in $userObj.LicenseAssignmentStates) {
-                $assignmentPaths[$($skuAssignment.SkuId)] = if ($skuAssignment.AssignedByGroup) { "Group" } else { "Direct" }
-            }
+            $licenseAssignmentStates = $userObj.LicenseAssignmentStates
 
             $targetSnippet = "User '${UserPrincipalName}'"
         }
 
-        if ($PSCmdlet.ParameterSetName -match "SkuName") {
+        if ($SkuName) {
             $SkuId = $skuNameHashTable[$SKuName].SkuId
         }
 
-        if ($PSCmdlet.ParameterSetName -match "SkuId") {
+        if ($SkuId) {
             $SkuName = $skuIdHashTable[$SkuId].DisplayName
         }
     }
 
     process {
-        # If a SkuId is given focus only on that license
-        if ($SkuId) {
-            $assignedLicenses = $assignedLicenses | Where-Object { $_.SkuId -eq "$SkuId" }
+        # If a SkuId or SkuName is given focus only on that license
+        if ($SkuId -or $SkuName) {
+            $licenseAssignmentStates = $licenseAssignmentStates | Where-Object { $_.Skuid -eq "$SkuId" }
         }
 
-        # If we have to show only the plans, it's straight forward...
+        if ($ShowDirectOnly) {
+            $licenseAssignmentStates = $licenseAssignmentStates | Where-Object { $_.AssignedByGroup.Length -eq 0 }
+        }
+
         if ($ShowPlansOnly) {
+            # If we have to show only the plans, it's straight forward...
+
             # If a SkuId is given modify the output title accordingly
             # I don't need to do it this way if I am not doing -ShowPlansOnly coz then I set the title within the loop and that picks up the SkuName. 
             # I use a different variable $targetSnippet2 there coz I need to keep some parts the same across the loop.
-            if ($SkuId) {
+            if ($PSCmdlet.ParameterSetName -match "Sku") {
                 $SkuName = $skuIdHashTable[$SkuId].DisplayName
                 $targetSnippet = $targetSnippet + " for license '$SkuName'"
             }
 
-            $assignedLicenses | ForEach-Object {
+            # An array containing all the plans. 
+            # There could be more than one assignment, so I want to put all the plans into a single array so I can sort them. 
+            $planStates = @()
+
+            $licenseAssignmentStates | ForEach-Object {
                 $skuAssignedToObject = $_.SkuId
                 # The plans that are disabled for this license assignments
                 $disabledPlans = $_.DisabledPlans
+
+                if ($_.AssignedByGroup) {
+                    try {
+                        $groupObj = Get-MgGroup -GroupId $_.AssignedByGroup -Property DisplayName -ErrorAction Stop
+                        $assignmentPath = "Via Group '$($groupObj.DisplayName)'"
+
+                    } catch {
+                        $assignmentPath = "Via Group '$($_.AssignedByGroup)'"
+                    }
+                } else {
+                    $assignmentPath = "Direct"
+                }
     
                 # All the plans that are actually available for this license SKU
                 $skuApplicablePlans = ($subscribedSkuIdHashTable[$skuAssignedToObject].PlansIncludedFriendlyName | Where-Object { $_.AppliesTo -eq "User" }).ServicePlanId
     
-                $planStates = foreach ($planId in $skuIdHashTable[$skuAssignedToObject].PlansIncludedIds) {
+                $planStates += foreach ($planId in $skuIdHashTable[$skuAssignedToObject].PlansIncludedIds) {
                     if ($planId -notin $skuApplicablePlans)  { continue }
     
                     [pscustomobject][ordered]@{
                         "PlanName" = $planIdHashTable[$planId].DisplayName
-                        "PlanId" = $planId
                         "State" = if ($disabledPlans -contains $planId) { "Off" } else { "On" }
-                        # Yes, I repeat this info here and below. That's coz I might be viewing the plans only via -ShowPlansOnly
+                        "AssignmentPath" = $assignmentPath
                         "SkuName" = $skuIdHashTable[$skuAssignedToObject].DisplayName
-                        "SkuId" = $skuAssignedToObject
+                        "More" = [pscustomobject]@{
+                            "SkuId" = $skuAssignedToObject
+                            "PlanId" = $planId
+                        }
                     }
                 }
-
-                if ($SortPlansByState) {
-                    $planStates | Sort-Object -Descending -Property { $_.State }
-
-                } else {
-                    $planStates | Sort-Object -Descending -Property { $_.PlanName }
-                }
-
-            } | Out-ConsoleGridView -OutputMode None -Title "Plans assigned to $targetSnippet"
+            }
+            
+            if ($SortPlansByState) {
+                $planStates | Sort-Object -Descending -Property { $_.State } | Out-ConsoleGridView -OutputMode None -Title "Plans assigned to $targetSnippet"
+            } else {
+                $planStates | Sort-Object -Property { $_.PlanName } | Out-ConsoleGridView -OutputMode None -Title "Plans assigned to $targetSnippet"
+            }
 
         } else {
-        # If we are showing licenses to, I want to capture the user selections and then loop into a plan only view for each of their selections :)
-            $userSelections = $assignedLicenses | ForEach-Object {
+            # If we are showing licenses to, I want to capture the user selections and then loop into a plan only view for each of their selections :)
+
+            # If a SkuId is given modify the output title accordingly
+            if ($SkuId -or $SkuName) {
+                $SkuName = $skuIdHashTable[$SkuId].DisplayName
+                $targetSnippet2 = $targetSnippet + " for license '$SkuName'"
+
+            } else {
+                $targetSnippet2 = $targetSnippet
+            }
+            
+            $userSelections = $licenseAssignmentStates | ForEach-Object {
                 $skuAssignedToObject = $_.SkuId
                 # The plans that are disabled for this license assignments
                 $disabledPlans = $_.DisabledPlans
 
-                # If a SkuId is given modify the output title accordingly
-                if ($SkuId) {
-                    $SkuName = $skuIdHashTable[$SkuId].DisplayName
-                    $targetSnippet = $targetSnippet + " for license '$SkuName'"
-                }
-    
                 # All the plans that are actually available for this license SKU
                 $skuApplicablePlans = ($subscribedSkuIdHashTable[$skuAssignedToObject].PlansIncludedFriendlyName | Where-Object { $_.AppliesTo -eq "User" }).ServicePlanId
     
-                $planStates = foreach ($planId in $skuIdHashTable[$skuAssignedToObject].PlansIncludedIds) {
-                    if ($planId -notin $skuApplicablePlans)  { continue }
-    
-                    [pscustomobject][ordered]@{
-                        "PlanName" = $planIdHashTable[$planId].DisplayName
-                        "PlanId" = $planId
-                        "State" = if ($disabledPlans -contains $planId) { "Off" } else { "On" }
-                        # Yes, I repeat this info here and below. That's coz I might be viewing the plans only via -ShowPlansOnly
-                        "SkuName" = $skuIdHashTable[$skuAssignedToObject].DisplayName
-                        "SkuId" = $skuAssignedToObject
+                if ($_.AssignedByGroup) {
+                    try {
+                        $groupObj = Get-MgGroup -GroupId $_.AssignedByGroup -Property DisplayName -ErrorAction Stop
+                        $assignmentPath = "Via Group '$($groupObj.DisplayName)'"
+
+                    } catch {
+                        $assignmentPath = "Via Group '$($_.AssignedByGroup)'"
                     }
+                } else {
+                    $assignmentPath = "Direct"
                 }
-    
-    
+
                 $totalCount = $skuApplicablePlans.Count
-                $enabledCount = $skuApplicablePlans.Count - $_.DisabledPlans.Count
+                $enabledCount = $skuApplicablePlans.Count - $disabledPlans.Count
     
                 [pscustomobject][ordered]@{
                     "SkuName" = $skuIdHashTable[$skuAssignedToObject].DisplayName
-                    "SkuId" = $skuAssignedToObject
-                    "AssignmentPath" = $assignmentPaths[$skuAssignedToObject]
-                    "Plans" = $planStates
-                    "Count" = "${enabledCount}/${totalCount}"
+                    "AssignmentPath" = $assignmentPath
+                    "EnabledPlansCount" = "${enabledCount}/${totalCount}"
+                    "More" = [pscustomobject]@{
+                        "SkuId" = $skuAssignedToObject
+                        # Need an extra column coz I got to filter via this below
+                        "AssignedViaGroupId" = $_.AssignedByGroup
+                    }
                 }
+
+                # I don't output the plans here. We can see that when making selections.
     
-            } | Out-ConsoleGridView -Title "Licenses assigned to $targetSnippet" 
-            # Note I use $targetSnippet here as it's NOT Sku specific
+            } | Out-ConsoleGridView -Title "Licenses assigned to $targetSnippet2" 
 
             # If the user made selection, expand into the plans
             foreach ($selection in $userSelections) {
-                $assignedLicenses | Where-Object { $_.SkuId -eq $selection.SkuId } | ForEach-Object {
+                $licenseAssignmentStates | 
+                Where-Object { $_.SkuId -eq $selection.More.SkuId -and $_.AssignedByGroup -eq $selection.More.AssignedViaGroupId } | 
+                ForEach-Object {
                     $skuAssignedToObject = $_.SkuId
                     # The plans that are disabled for this license assignments
                     $disabledPlans = $_.DisabledPlans
 
-                    # This is the text I show in the title. In case -SkuId is specified, I don't need to do a special case as the loop will only run once.
-                    # $targetSnippet never changes, but $targetSnippet2 keeps varies each time
+                    # This is the text I show in the title. 
+                    # In case -SkuId is specified, I don't need to do a special case as I will only show that SKU.
+                    # $targetSnippet never changes, but $targetSnippet2 keeps varies each time.
                     $SkuName = $skuIdHashTable[$skuAssignedToObject].DisplayName
                     $targetSnippet2 = $targetSnippet + " for license '$SkuName'"
         
@@ -424,11 +473,13 @@ function Get-MgAssignedLicenses {
         
                         [pscustomobject][ordered]@{
                             "PlanName" = $planIdHashTable[$planId].DisplayName
-                            "PlanId" = $planId
                             "State" = if ($disabledPlans -contains $planId) { "Off" } else { "On" }
-                            # Yes, I repeat this info here and below. That's coz I might be viewing the plans only via -ShowPlansOnly
+                            "AssignmentPath" = $selection.AssignmentPath
                             "SkuName" = $skuIdHashTable[$skuAssignedToObject].DisplayName
-                            "SkuId" = $skuAssignedToObject
+                            "More" = [pscustomobject]@{
+                                "SkuId" = $skuAssignedToObject
+                                "PlanId" = $planId
+                            }
                         }
                     }
 
@@ -438,7 +489,7 @@ function Get-MgAssignedLicenses {
                             Out-ConsoleGridView -OutputMode None -Title "Plans assigned to $targetSnippet2"
     
                     } else {
-                        $planStates | Sort-Object -Descending -Property { $_.PlanName } | 
+                        $planStates | Sort-Object -Property { $_.PlanName } | 
                             # Don't allow any selections
                             Out-ConsoleGridView -OutputMode None -Title "Plans assigned to $targetSnippet2"
                     }
@@ -455,7 +506,7 @@ function Get-MgAssignedLicenses {
                     $selection | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $GroupName
                 }
 
-                $selection | Select-Object -Property * -ExcludeProperty "Plans"
+                $selection | Select-Object -ExcludeProperty More
             }
         }
     }
@@ -475,7 +526,7 @@ function Update-MgAssignedLicensePlans {
 
         [Parameter(Position=1,Mandatory=$true,ParameterSetName = "Group-SkuName")]
         [Parameter(Position=1,Mandatory=$true,ParameterSetName = "User-SkuName")]
-        [ArgumentCompleter( { $skuNameHashTable.Keys | Sort-Object })]
+        [ArgumentCompleter( { $skuNameHashTable.Keys | Sort-Object } )]
         [string]$SkuName,
 
         [Parameter(Position=1,Mandatory=$true,ParameterSetName = "Group-SkuId")]
@@ -487,26 +538,36 @@ function Update-MgAssignedLicensePlans {
 
     <#
     .DESCRIPTION
-    SHow the license **plans** assigned to a group or user. You can select one or more by pressing the SPACE key and then ENTER to toggle the state (disable the plan if enabled; enable the plan if disabled).
+    Update the license **plans** assigned to a group or user. You can select one or more by pressing the SPACE key and then ENTER to toggle the state (disable the plan if enabled; enable the plan if disabled).
 
     .PARAMETER GroupName
-    The Group you'd like to see the license assignments of. 
+    The Group you'd like to update the license assignments of. 
+
+    Either of GroupName or UserPrincipalName is mandatory.
 
     .PARAMETER UserPrincipalName
-    The User you'd like to see the license assignments of. 
+    The User you'd like to update the license assignments of. 
+
+    Either of GroupName or UserPrincipalName is mandatory.
 
     .PARAMETER SkuName
     The license SKU Name (assigned to the user or group) whose plan details you wish to modify.
 
     You can enter the SKU Id too instead.
 
+    Either of SkuName or SkuId is mandatory.
+
     .PARAMETER SkuId
     The license SKU Id (assigned to the user or group) whose plan details you wish to modify. 
 
     You can enter the SKU Name too instead.
 
+    Either of SkuName or SkuId is mandatory.
+
     .PARAMETER SortPlansByState
     By default plans are sorted alphabetically. Use this to sort them by On/ Off state. 
+
+    Optional.
     #>
 
     begin {
@@ -551,12 +612,7 @@ function Update-MgAssignedLicensePlans {
                 throw "Error searching for group '${GroupName}' - $($_.Exception.Message)"
             }
 
-            $assignedLicenses = $groupObj.AssignedLicenses
-
-            $assignmentPaths = @{}
-            foreach ($skuIdTemp in $assignedLicenses.SkuId) {
-                $assignmentPaths[$skuIdTemp] = "Direct"
-            }
+            $licenseAssignmentStates = $groupObj.LicenseAssignmentStates
 
             $targetSnippet = "Group '${GroupName}'"
         }
@@ -573,34 +629,25 @@ function Update-MgAssignedLicensePlans {
                 throw "Error searching for user '${UserPrincipalName}' - $($_.Exception.Message)"
             }
 
-            $assignedLicenses = $userObj.AssignedLicenses
-
-            $assignmentPaths = @{}
-            foreach ($skuAssignment in $userObj.LicenseAssignmentStates) {
-                $assignmentPaths[$($skuAssignment.SkuId)] = if ($skuAssignment.AssignedByGroup) { "Group" } else { "Direct" }
-            }
-
+            $licenseAssignmentStates = $userObj.LicenseAssignmentStates
+            
             $targetSnippet = "User '${UserPrincipalName}'"
         }
 
-        if ($PSCmdlet.ParameterSetName -match "SkuName") {
+        if ($SkuName) {
             $SkuId = $skuNameHashTable[$SKuName].SkuId
         }
 
-        if ($PSCmdlet.ParameterSetName -match "SkuId") {
+        if ($SkuId) {
             $SkuName = $skuIdHashTable[$SkuId].DisplayName
         }
     }
 
     process {
-        if ($assignmentPaths[$SkuId] -eq "Group") {
-            throw "Unable to make changes as this is a group assignment"
-        }
-
-        $userSelections = $assignedLicenses | Where-Object { $_.SkuId -eq "$SkuId" } | ForEach-Object {
-            # NOTE: There will only be one object, so the ForEach-Object is kind of redundant. Keeping it this way to keep the code similar to others.
-            
-            # Again, same. Using this variable to keep it similar to the other code. 
+        Write-Output "Skipping any $SkuName assignments done via groups. Run the cmdlet against the group in such instances."
+        
+        $userSelections = $licenseAssignmentStates | Where-Object { $_.SkuId -eq "$SkuId" -and $_.AssignedByGroup.Length -eq 0 } | ForEach-Object {
+            # Using this variable name to keep it similar to the other code. 
             $skuAssignedToObject = $_.SkuId
             # The plans that are disabled for this license assignments
             $disabledPlans = $_.DisabledPlans
@@ -613,43 +660,56 @@ function Update-MgAssignedLicensePlans {
 
                 [pscustomobject][ordered]@{
                     "PlanName" = $planIdHashTable[$planId].DisplayName
-                    "PlanId" = $planId
                     "State" = if ($disabledPlans -contains $planId) { "Off" } else { "On" }
-                    # Yes, I repeat this info here and below. I add it here coz it makes it easier to pass this info to other cmdlets later.
                     "SkuName" = $skuIdHashTable[$skuAssignedToObject].DisplayName
-                    "SkuId" = $skuAssignedToObject
+                    "More" = [pscustomobject]@{
+                            "SkuId" = $skuAssignedToObject
+                            "PlanId" = $planId
+                    }
                 }
             }
-        } | Sort-Object -Descending -Property { if ($SortPlansByState) { $_.State } else { $_.PlanName } } | Out-ConsoleGridView -Title "Plans of license '$($skuIdHashTable[$SkuId].DisplayName)' assigned to $targetSnippet - select to toggle the state"
+        } 
+        
+        if ($SortPlansByState) {
+            $userSelections = $userSelections | Sort-Object -Descending -Property { $_.State } | Out-ConsoleGridView -Title "Plans of license '$($skuIdHashTable[$SkuId].DisplayName)' assigned to $targetSnippet - select & accept to toggle the state"
+        } else {
+            $userSelections = $userSelections | Sort-Object -Property { $_.PlanName } | Out-ConsoleGridView -Title "Plans of license '$($skuIdHashTable[$SkuId].DisplayName)' assigned to $targetSnippet - select & accept to toggle the state"
+        }
 
         if ($userSelections.Count -ne 0) {
-            Write-Output "Please confirm the following actions:"
+            Write-Output "`nPlease confirm the following actions:"
+
+            $tempArray = @()
 
             foreach ($selection in $userSelections) {
-                $planName = $planIdHashTable[$selection.PlanId].DisplayName
+                $planName = $planIdHashTable[$selection.More.PlanId].DisplayName
 
                 if ($selection.State -eq "Off") { 
                     $currentState = "Disabled"
                     $newState = "Enabled" 
 
                     # Need to turn this on - so we remove it from the disabled plans
-                    $disabledPlans = @($disabledPlans | Where-Object { $_ -ne $selection.PlanId })
-
-                    Write-Host -ForegroundColor Green "$planName | $currentState => $newState"
+                    $disabledPlans = @($disabledPlans | Where-Object { $_ -ne $selection.More.PlanId })
 
                 } else {
                     $currentState = "Enabled" 
                     $newState = "Disabled"
 
                     if ($disabledPlans.Count -eq 0) {
-                        $disabledPlans = @($selection.PlanId)
+                        $disabledPlans = @($selection.More.PlanId)
                     } else {
-                        $disabledPlans = @($disabledPlans + $selection.PlanId)
+                        $disabledPlans = @($disabledPlans + $selection.More.PlanId)
                     }
+                }
 
-                    Write-Host -ForegroundColor Red "$planName | $currentState => $newState"
+                $tempArray += [pscustomobject][ordered]@{
+                    "Plan" = "$planName"
+                    "Current State" = $currentState
+                    "New State" = $newState
                 }
             }
+
+            $tempArray | Format-Table
 
             do {
                 $confirmation = Read-Host "Ok to proceed? [y/n]"
@@ -681,6 +741,15 @@ function Update-MgAssignedLicensePlans {
                 }
 
                 Write-Output "✔ All done!"
+
+                if ($PSCmdlet.ParameterSetName -match "Group") {
+                    Get-MgAssignedLicenses -GroupId $groupObj.Id -SkuId $SkuId -ShowDirectOnly -ShowPlansOnly
+                } 
+                
+                if ($PSCmdlet.ParameterSetName -match "User") {
+                    Get-MgAssignedLicenses -UserPrincipalName $UserPrincipalName -SkuId $SkuId -ShowDirectOnly -ShowPlansOnly
+                }
+
             } catch {
                 throw "Something went wrong: $($_.Exception.Message)"
             }
@@ -777,13 +846,6 @@ function Add-MgAssignedLicense {
             } catch {
                 throw "Error searching for group '${GroupName}' - $($_.Exception.Message)"
             }
-
-            $assignedLicenses = $groupObj.AssignedLicenses
-
-            $assignmentPaths = @{}
-            foreach ($skuIdTemp in $assignedLicenses.SkuId) {
-                $assignmentPaths[$skuIdTemp] = "Direct"
-            }
         }
 
         if ($PSCmdlet.ParameterSetName -match "User") {
@@ -796,13 +858,6 @@ function Add-MgAssignedLicense {
             
             } catch {
                 throw "Error searching for user '${UserPrincipalName}' - $($_.Exception.Message)"
-            }
-
-            $assignedLicenses = $userObj.AssignedLicenses
-
-            $assignmentPaths = @{}
-            foreach ($skuAssignment in $userObj.LicenseAssignmentStates) {
-                $assignmentPaths[$($skuAssignment.SkuId)] = if ($skuAssignment.AssignedByGroup) { "Group" } else { "Direct" }
             }
         }
 
@@ -840,7 +895,7 @@ function Add-MgAssignedLicense {
         $userSelections = $planStates | Sort-Object -Descending -Property { if ($SortPlansByState) { $_.State } else { $_.PlanName } } | Out-ConsoleGridView -Title "Plans of license '$($skuIdHashTable[$SkuId].DisplayName)' - select plans you wish to disable" 
 
         if ($userSelections.Count -ne 0) {
-            Write-Output "Please confirm the following actions:"
+            Write-Output "`nPlease confirm the following actions:"
 
             foreach ($selection in $userSelections) {
                 $planName = $planIdHashTable[$selection.PlanId].DisplayName
@@ -870,6 +925,7 @@ function Add-MgAssignedLicense {
 
             do {
                 $confirmation = Read-Host "Ok to proceed? [y/n]"
+
             } while ($confirmation -notin "y","n")
 
             if ($confirmation -eq "n") {
@@ -994,5 +1050,90 @@ function Get-MgAvailableLicenses {
                 Get-MgAssignedLicenses -GroupName $selection2.DisplayName -SkuId $selection2.SkuId -ShowPlansOnly
             }
         }
+    }
+}
+
+function Remove-MgAssignedLicense {
+    begin {
+        $subscribedSkuIdHashTable = $script:subscribedSkuIdHashTable
+        $subscribedSkuNameHashTable = $script:subscribedSkuNameHashTable
+        $skuNameHashTable = $script:skuNameHashTable
+        $skuIdHashTable = $script:skuIdHashTable
+        $planNameHashTable = $script:planNameHashTable
+        $planIdHashTable = $script:planIdHashTable
+
+        if ($subscribedSkuIdHashTable.Count -eq 0 -or $subscribedSkuNameHashTable -eq 0 -or 
+                $skuNameHashTable -eq 0 -or $skuIdHashTable -eq 0 -or 
+                $planNameHashTable  -eq 0 -or $planIdHashTable -eq 0) {
+            
+            Update-MgLicensingData
+
+            $subscribedSkuIdHashTable = $script:subscribedSkuIdHashTable
+            $subscribedSkuNameHashTable = $script:subscribedSkuNameHashTable
+            $skuNameHashTable = $script:skuNameHashTable
+            $skuIdHashTable = $script:skuIdHashTable
+            $planNameHashTable = $script:planNameHashTable
+            $planIdHashTable = $script:planIdHashTable
+        }
+
+        if ($subscribedSkuIdHashTable.Count -eq 0 -or $subscribedSkuNameHashTable -eq 0 -or 
+                $skuNameHashTable -eq 0 -or $skuIdHashTable -eq 0 -or 
+                $planNameHashTable  -eq 0 -or $planIdHashTable -eq 0) {
+
+            throw "Missing the required info. Did Update-MgLicensingData successfully?"
+
+        }
+
+        if ($PSCmdlet.ParameterSetName -match "Group") {
+            try {
+                $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+            
+                if ($null -eq $groupObj) {
+                    throw "Couldn't find group '$GroupName'"
+                }
+            
+            } catch {
+                throw "Error searching for group '${GroupName}' - $($_.Exception.Message)"
+            }
+
+            $assignedLicenses = $groupObj.AssignedLicenses
+
+            $assignmentPaths = @{}
+            foreach ($skuIdTemp in $assignedLicenses.SkuId) {
+                $assignmentPaths[$skuIdTemp] = "Direct"
+            }
+        }
+
+        if ($PSCmdlet.ParameterSetName -match "User") {
+            try {
+                $userObj = Get-MgUser -Filter "UserPrincipalName eq '$UserPrincipalName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+            
+                if ($null -eq $userObj) {
+                    throw "Couldn't find user '$UserPrincipalName'"
+                }
+            
+            } catch {
+                throw "Error searching for user '${UserPrincipalName}' - $($_.Exception.Message)"
+            }
+
+            $assignedLicenses = $userObj.AssignedLicenses
+
+            $assignmentPaths = @{}
+            foreach ($skuAssignment in $userObj.LicenseAssignmentStates) {
+                $assignmentPaths[$($skuAssignment.SkuId)] = if ($skuAssignment.AssignedByGroup) { "Group" } else { "Direct" }
+            }
+        }
+
+        if ($PSCmdlet.ParameterSetName -match "SkuName") {
+            $SkuId = $skuNameHashTable[$SKuName].SkuId
+        }
+
+        if ($PSCmdlet.ParameterSetName -match "SkuId") {
+            $SkuName = $skuIdHashTable[$SkuId].DisplayName
+        }
+    }
+
+    process {
+        # To be implemented
     }
 }
