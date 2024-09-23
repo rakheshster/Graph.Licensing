@@ -363,7 +363,7 @@ function Get-MgAssignedLicenses {
 
         if ($PSCmdlet.ParameterSetName -match "User") {
             try {
-                $userObj = Get-MgUser -Filter "UserPrincipalName eq '$UserPrincipalName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                $userObj = Get-MgUser -Filter "UserPrincipalName eq '$UserPrincipalName'" -Property UserPrincipalName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
             
                 if ($null -eq $userObj) {
                     throw "Couldn't find user '$UserPrincipalName'"
@@ -691,7 +691,7 @@ function Update-MgAssignedLicensePlans {
 
         if ($PSCmdlet.ParameterSetName -match "User") {
             try {
-                $userObj = Get-MgUser -Filter "UserPrincipalName eq '$UserPrincipalName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                $userObj = Get-MgUser -Filter "UserPrincipalName eq '$UserPrincipalName'" -Property UserPrincipalName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
             
                 if ($null -eq $userObj) {
                     throw "Couldn't find user '$UserPrincipalName'"
@@ -1128,33 +1128,89 @@ function Get-MgAvailableLicenses {
         Select-Object @{"Label" = "Name"; "Expression" = {$skuIdHashTable[$_.SkuId].DisplayName}}, @{"Label" = "Consumed"; "Expression" = { $_.ConsumedUnits }}, @{"Label" = "Available"; "Expression" = { $_.PrepaidUnits.Enabled }}, @{"Label" = "Warning"; "Expression" = { $_.PrepaidUnits.Warning }}, @{"Label" = "LockedOut"; "Expression" = { $_.PrepaidUnits.LockedOut }}, @{"Label" = "Suspended"; "Expression" = { $_.PrepaidUnits.Suspended }}, SkuId |
         Sort-Object -Property Name 
     
-        $userSelections = $availableLicenses | Out-ConsoleGridView -Title "Available Licenses (Count: $($availableLicenses.Count))"
+        $userSelections = $availableLicenses | Out-ConsoleGridView -Title "Available Licenses (Count: $($availableLicenses.Count)) - selecting any will show all users and groups assigned to it"
     
         foreach ($selection in $userSelections) {
             $SkuId = $selection.SkuId
             $SkuName = $skuIdHashTable[$SkuId].DisplayName
+            $skuApplicablePlans = ($subscribedSkuIdHashTable[$SkuId].PlansIncludedFriendlyName | Where-Object { $_.AppliesTo -eq "User" }).ServicePlanId
+            $totalPlansCount = $skuApplicablePlans.Count # total count of the plans
+
             $filterClause = "assignedLicenses/any(x:x/SkuId eq $SkuId)"
             $userSelections2 = @()
+
+            Write-Output "`nIdentifying users directly assigned the '$SkuName' license"
     
             try {
-                $userSelections2 = Get-MgUser -All -Filter $filterClause -ConsistencyLevel Eventual -CountVariable userCount -ErrorAction Stop | 
-                Select-Object UserPrincipalName, Id, @{"Label" = "SkuName"; Expression = { $SkuName }}, @{"Label" = "SkuId"; Expression = { $SkuId }} | 
-                Out-ConsoleGridView -Title "Users assigned the '$SkuName' license (Count: $userCount)"
+                Write-Output "Retrieving all users assigned the '$SkuName' license (might take some time)"
+                $userObjs = Get-MgUser -All -Filter $filterClause -ConsistencyLevel Eventual -CountVariable userCount -Property UserPrincipalName,AssignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                
+                $counter = 0    # for the progress loop
+                $actualCounter = 0  # the actual number of users we will finally show (i.e. direct assignments)
+                $userObjsFiltered = foreach ($userObj in $userObjs) { 
+                    $counter++
+                    $counterPercentage = (($counter / $userCount) * 100)
+
+                    Write-Progress -Activity "Filtering these to identify directly assigned" -PercentComplete $counterPercentage -Status "$counter of $userCount"
+                    
+                    # Capture all the assignments for this SKU
+                    $interestedLicenseAssignments = $userObj.LicenseAssignmentStates | Where-Object { $_.SkuId -eq "$skuId" }
+
+                    # Do any of these have the assignedbygroup empty? If so, that's direct
+                    if ($interestedLicenseAssignments | Where-Object { $_.SkuId -eq "$skuId" -and $_.AssignedByGroup.Length -eq 0 }) { 
+                        # If there's more than one license assignment, and we already know there is one direct assignment...
+                        if ($interestedLicenseAssignments.Count -gt 1) {
+                            $userObj | Add-Member -MemberType NoteProperty -Name "AssignmentPaths" -Value "Direct+Group"
+                        } else {
+                            $userObj | Add-Member -MemberType NoteProperty -Name "AssignmentPaths" -Value "Direct"
+                        }
+
+                        $userObj
+                        $actualCounter++
+                    }
+                }
+
+                $userSelections2 = $userObjsFiltered | 
+                Select-Object UserPrincipalName, @{
+                        "Label" = "EnabledPlansCount"; 
+                        "Expression" = { 
+                            $disabledPlansCount = ($_.AssignedLicenses | Where-Object { $_.SkuId -eq "$SkuId" }).DisabledPlans.Count
+                            $enabledPlansCount = $totalPlansCount - $disabledPlansCount
+                            "${enabledPlansCount}/${totalPlansCount}"
+                        }
+                    },
+                    AssignmentPaths, 
+                    Id,
+                    @{"Label" = "SkuName"; Expression = { $SkuName }}, 
+                    @{"Label" = "SkuId"; Expression = { $SkuId }} | 
+                Out-ConsoleGridView -Title "Users DIRECTLY assigned the '$SkuName' license (Count: $actualCounter)"
         
             } catch {
                 throw "Error retrieving users assigned this license: $($_.Exception.Message)"
             }
     
             foreach ($selection2 in $userSelections2) {
-                Get-MgAssignedLicenses -UserPrincipalName $selection2.UserPrincipalName -SkuId $selection2.SkuId -ShowPlansOnly
+                Get-MgAssignedLicenses -UserPrincipalName $selection2.UserPrincipalName -SkuId $selection2.SkuId
             }
 
             # re-initialize this
             $userSelections2 = @()
+
+            Write-Output "`nIdentifying groups directly assigned the '$SkuName' license"
     
             try {
-                $userSelections2 = Get-MgGroup -All -Filter $filterClause -ConsistencyLevel Eventual -CountVariable groupCount -ErrorAction Stop | 
-                Select-Object DisplayName, Id, @{"Label" = "SkuName"; Expression = { $SkuName }}, @{"Label" = "SkuId"; Expression = { $SkuId }} | 
+                $userSelections2 = Get-MgGroup -All -Filter $filterClause -ConsistencyLevel Eventual -CountVariable groupCount -Property DisplayName,Id,AssignedLicenses -ErrorAction Stop | 
+                Select-Object DisplayName, @{
+                        "Label" = "EnabledPlansCount"; 
+                        "Expression" = { 
+                            $disabledPlansCount = ($_.AssignedLicenses | Where-Object { $_.SkuId -eq "$SkuId" }).DisabledPlans.Count
+                            $enabledPlansCount = $totalPlansCount - $disabledPlansCount
+                            "${enabledPlansCount}/${totalPlansCount}"
+                        }
+                    },
+                    Id,
+                    @{"Label" = "SkuName"; Expression = { $SkuName }}, 
+                    @{"Label" = "SkuId"; Expression = { $SkuId }} | 
                 Out-ConsoleGridView -Title "Groups assigned the '$SkuName' license (Count: $groupCount)"
         
             } catch {
@@ -1162,7 +1218,7 @@ function Get-MgAvailableLicenses {
             }
     
             foreach ($selection2 in $userSelections2) {
-                Get-MgAssignedLicenses -GroupName $selection2.DisplayName -SkuId $selection2.SkuId -ShowPlansOnly
+                Get-MgAssignedLicenses -GroupName $selection2.DisplayName -SkuId $selection2.SkuId
             }
         }
     }
@@ -1253,7 +1309,7 @@ function Remove-MgAssignedLicense {
 
         if ($PSCmdlet.ParameterSetName -match "User") {
             try {
-                $userObj = Get-MgUser -Filter "UserPrincipalName eq '$UserPrincipalName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                $userObj = Get-MgUser -Filter "UserPrincipalName eq '$UserPrincipalName'" -Property UserPrincipalName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
             
                 if ($null -eq $userObj) {
                     throw "Couldn't find user '$UserPrincipalName'"

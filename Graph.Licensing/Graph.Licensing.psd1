@@ -12,7 +12,7 @@
     RootModule = 'Graph.Licensing.psm1'
     
     # Version number of this module.
-    ModuleVersion = '0.0.7'
+    ModuleVersion = '0.0.8'
     
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -120,7 +120,7 @@
             # IconUri = ''
     
             # ReleaseNotes of this module
-            ReleaseNotes = 'Bug fix to Add-MgAssignedLicense cmdlet'
+            ReleaseNotes = 'UI improvements to Get-MgAvailableLicenses.'
     
             # Prerelease string of this module
             # Prerelease = ''
