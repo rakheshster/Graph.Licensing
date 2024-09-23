@@ -257,6 +257,8 @@ function Get-MgAssignedLicenses {
         
         [Switch]$ShowPlansOnly,
         [Switch]$SortPlansByState,
+
+        [Parameter(Mandatory=$false,ParameterSetName = "User")]
         [Switch]$ShowDirectOnly
     )
 
@@ -338,7 +340,7 @@ function Get-MgAssignedLicenses {
         if ($PSCmdlet.ParameterSetName -match "Group") {
             try {
                 if ($GroupName) {
-                    $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                    $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property DisplayName,assignedLicenses,Id -ErrorAction Stop
 
                 } else {
                     $groupObj = Get-MgGroup -GroupId $GroupId -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
@@ -352,7 +354,7 @@ function Get-MgAssignedLicenses {
                 throw "Error searching for group '${GroupName}' - $($_.Exception.Message)"
             }
 
-            $licenseAssignmentStates = $groupObj.LicenseAssignmentStates
+            $licenseAssignmentStates = $groupObj.assignedLicenses
 
             if ($GroupId) { $GroupName = $groupObj.DisplayName } else { $GroupId = $groupObj.Id }
 
@@ -666,7 +668,7 @@ function Update-MgAssignedLicensePlans {
         if ($PSCmdlet.ParameterSetName -match "Group") {
             try {
                 if ($GroupName) {
-                    $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                    $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property DisplayName,assignedLicenses,Id -ErrorAction Stop
 
                 } else {
                     $groupObj = Get-MgGroup -GroupId $GroupId -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
@@ -680,7 +682,7 @@ function Update-MgAssignedLicensePlans {
                 throw "Error searching for group '${GroupName}' - $($_.Exception.Message)"
             }
 
-            $licenseAssignmentStates = $groupObj.LicenseAssignmentStates
+            $licenseAssignmentStates = $groupObj.assignedLicenses
 
             if ($GroupId) { $GroupName = $groupObj.DisplayName } else { $GroupId = $groupObj.Id }
 
@@ -813,7 +815,7 @@ function Update-MgAssignedLicensePlans {
                 Write-Output "✔ All done!"
 
                 if ($PSCmdlet.ParameterSetName -match "Group") {
-                    Get-MgAssignedLicenses -GroupId $groupObj.Id -SkuId $SkuId -ShowDirectOnly -ShowPlansOnly
+                    Get-MgAssignedLicenses -GroupId $groupObj.Id -SkuId $SkuId -ShowPlansOnly
                 } 
                 
                 if ($PSCmdlet.ParameterSetName -match "User") {
@@ -1166,6 +1168,39 @@ function Get-MgAvailableLicenses {
 }
 
 function Remove-MgAssignedLicense {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "Group")]
+        [string]$GroupName,
+
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "GroupId")]
+        [string]$GroupId,
+
+        [Parameter(Position=0,Mandatory=$true,ParameterSetName = "User")]
+        [Alias("UPN")]
+        [string]$UserPrincipalName
+    )
+
+    <#
+    .DESCRIPTION
+    Add (assign) a license SKU to a user or group. While adding you can select the plans too.
+
+    .PARAMETER GroupName
+    The Group you'd like to assign licenses to.
+
+    Either of GroupName, GroupId, or UserPrincipalName is mandatory.
+
+    .PARAMETER GroupId
+    The Group you'd like to assign licenses to.
+
+    Either of GroupName, GroupId, or UserPrincipalName is mandatory.
+
+    .PARAMETER UserPrincipalName
+    The User you'd like to assign licenses to.
+
+    Either of GroupName, GroupId, or UserPrincipalName is mandatory.
+    #>
+
     begin {
         $subscribedSkuIdHashTable = $script:subscribedSkuIdHashTable
         $subscribedSkuNameHashTable = $script:subscribedSkuNameHashTable
@@ -1198,7 +1233,7 @@ function Remove-MgAssignedLicense {
 
         if ($PSCmdlet.ParameterSetName -match "Group") {
             try {
-                $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property DisplayName,assignedLicenses,Id -ErrorAction Stop
             
                 if ($null -eq $groupObj) {
                     throw "Couldn't find group '$GroupName'"
@@ -1208,12 +1243,11 @@ function Remove-MgAssignedLicense {
                 throw "Error searching for group '${GroupName}' - $($_.Exception.Message)"
             }
 
-            $assignedLicenses = $groupObj.AssignedLicenses
+            $licenseAssignmentStates = $groupObj.assignedLicenses
 
-            $assignmentPaths = @{}
-            foreach ($skuIdTemp in $assignedLicenses.SkuId) {
-                $assignmentPaths[$skuIdTemp] = "Direct"
-            }
+            if ($GroupId) { $GroupName = $groupObj.DisplayName } else { $GroupId = $groupObj.Id }
+
+            $targetSnippet = "Group '${GroupName}'"
         }
 
         if ($PSCmdlet.ParameterSetName -match "User") {
@@ -1228,20 +1262,9 @@ function Remove-MgAssignedLicense {
                 throw "Error searching for user '${UserPrincipalName}' - $($_.Exception.Message)"
             }
 
-            $assignedLicenses = $userObj.AssignedLicenses
-
-            $assignmentPaths = @{}
-            foreach ($skuAssignment in $userObj.LicenseAssignmentStates) {
-                $assignmentPaths[$($skuAssignment.SkuId)] = if ($skuAssignment.AssignedByGroup) { "Group" } else { "Direct" }
-            }
-        }
-
-        if ($PSCmdlet.ParameterSetName -match "SkuName") {
-            $SkuId = $skuNameHashTable[$SKuName].SkuId
-        }
-
-        if ($PSCmdlet.ParameterSetName -match "SkuId") {
-            $SkuName = $skuIdHashTable[$SkuId].DisplayName
+            $licenseAssignmentStates = $userObj.LicenseAssignmentStates
+            
+            $targetSnippet = "User '${UserPrincipalName}'"
         }
     }
 

@@ -12,7 +12,7 @@
     RootModule = 'Graph.Licensing.psm1'
     
     # Version number of this module.
-    ModuleVersion = '0.0.5'
+    ModuleVersion = '0.0.6'
     
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -120,7 +120,7 @@
             # IconUri = ''
     
             # ReleaseNotes of this module
-            ReleaseNotes = 'Fixed a typo in the scopes we were checking. Added workaround for when some SKUs are present in tenant but not in MS list.'
+            ReleaseNotes = 'Minor fixes'
     
             # Prerelease string of this module
             # Prerelease = ''
