@@ -80,8 +80,7 @@
         "Get-MgAssignedLicenses",
         "Update-MgAssignedLicensePlans",
         "Add-MgAssignedLicense",
-        "Get-MgAvailableLicenses",
-        "Remove-MgAssignedLicense"
+        "Get-MgAvailableLicenses"#, "Remove-MgAssignedLicense"
     )
     
     # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
@@ -121,7 +120,7 @@
             # IconUri = ''
     
             # ReleaseNotes of this module
-            ReleaseNotes = 'Fixes to Get-MgAssignedLicenses as it wasnt working as expected in case of assignments via group & direct.'
+            ReleaseNotes = 'Fixes to Get-MgAssignedLicenses as it wasnt working as expected in case of assignments via group & direct. Various changes to Update-MgAssignedLicensePlans & Add-MgAssignedLicense.'
     
             # Prerelease string of this module
             # Prerelease = ''
