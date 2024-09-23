@@ -984,11 +984,12 @@ function Add-MgAssignedLicense {
 
             [pscustomobject][ordered]@{
                 "PlanName" = $planIdHashTable[$planId].DisplayName
-                "PlanId" = $planId
                 "State" = if ($disabledPlans -contains $planId) { "Off" } else { "On" }
-                # Yes, I repeat this info here and below. I add it here coz it makes it easier to pass this info to other cmdlets later.
                 "SkuName" = $skuIdHashTable[$skuAssignedToObject].DisplayName
-                "SkuId" = $skuAssignedToObject
+                "More" = [pscustomobject]@{
+                    "SkuId" = $skuAssignedToObject
+                    "PlanId" = $planId
+                }
             }
         } 
         

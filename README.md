@@ -21,6 +21,10 @@ This modules depends upon the following.
 
 If it weren't for these, this module wouldn't exist! Thank you 😍 to the creators of these, especially `Microsoft.PowerShell.ConsoleGuiTools` which is what I use to drive things. 🙏
 
+```
+Install-Module "Microsoft.Graph.Authentication", "Microsoft.Graph.Groups", "Microsoft.Graph.Users", "Microsoft.Graph.Identity.DirectoryManagement", "Microsoft.PowerShell.ConsoleGuiTools"
+```
+
 ## Screenshots
 
 `Get-MgAvailableLicenses`
