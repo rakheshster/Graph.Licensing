@@ -12,7 +12,7 @@
     RootModule = 'Graph.Licensing.psm1'
     
     # Version number of this module.
-    ModuleVersion = '0.0.9'
+    ModuleVersion = '0.1'
     
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -120,7 +120,7 @@
             # IconUri = ''
     
             # ReleaseNotes of this module
-            ReleaseNotes = 'UI improvements to Get-MgAvailableLicenses.'
+            ReleaseNotes = 'No changes. Added license URI.'
     
             # Prerelease string of this module
             # Prerelease = ''
