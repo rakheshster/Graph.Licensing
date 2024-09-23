@@ -28,7 +28,7 @@ function Update-MgLicensingData {
         } elseif ($scopes -contains "User.ReadWrite.All") {
             Write-Output "👉 Warning: You will only be able to make changes to direct user license assignments."
     
-        } elseif ($scopes -contains "User.ReadWrite.All") {
+        } elseif ($scopes -contains "Group.ReadWrite.All") {
             Write-Output "👉 Warning: You will only be able to make changes to group license assignments."
     
         } elseif ($scopes -contains "Directory.Read.All" -or ($scopes -contains "User.Read.All" -and $scopes -contains "Group.Read.All")) {
@@ -48,7 +48,7 @@ function Update-MgLicensingData {
     process {
         $subscribedSkuIdHashTable = @{}
         $subscribedSkuNameHashTable = @{}
-        Write-Output "〰 Creating a list of available licenses from Graph"
+        Write-Output "〰 Creating a list of available licenses from Graph (you may be asked to sign-in again)"
         Get-MgSubscribedSku -All | Where-Object { $_.AppliesTo -eq "User" } | ForEach-Object {
             $subscribedSkuIdHashTable[$_.SkuId] = @{
                 "PlansIncludedFriendlyName" = $_.ServicePlans
@@ -158,6 +158,58 @@ function Update-MgLicensingData {
                     @($_.GUID) 
                 } else { 
                     @($planIdHashTable[$_.Service_Plan_Id].SkuIds) + @($_.GUID)
+                }
+            }
+        }
+
+        # Enrich these with info from Get-MgSubscribedSku. For some reason, there are SKUs like "f96d5aac-52c0-4a32-97c1-92b294a0834c" (POWERAUTOMATE_ATTENDED_RPA_DEPT) that are missing! Weird.
+        Write-Output "〰 Enriching downloaded info with any firm specific details"
+        $nameMappingsIAmAwareOf = @{
+            "POWERAUTOMATE_ATTENDED_RPA_DEPT" = "Power Automate Premium for Department"
+            "Workload_Identities_P2" = "Workload Identities P2"
+        }
+
+        foreach ($skuId in $subscribedSkuIdHashTable.Keys) {
+            if ($skuIdHashTable.$skuId.DisplayName.Length -eq 0) {
+
+                $partNumber = $subscribedSkuIdHashTable[$skuId].SkuPartNumber
+                Write-Output "$partNumber seems to be tenant specific"
+
+                if ($nameMappingsIAmAwareOf.Keys -contains $partNumber) { 
+                    $partDisplayName = $nameMappingsIAmAwareOf[$partNumber] 
+                } else { 
+                    $partDisplayName = $partNumber
+                }
+
+                $skuIdHashTable[$skuId] = @{
+                    "SkuPartNumber" = $partNumber
+                    "DisplayName" = $partDisplayName
+
+                    "PlansIncludedFriendlyName" = if ($skuIdHashTable[$skuId].PlansIncludedFriendlyName.Length -eq 0 ) {
+                        @(($subscribedSkuIdHashTable[$skuId].PlansIncludedFriendlyName | Where-Object { $_.AppliesTo -eq "User" }).ServicePlanName)
+                    } else { 
+                        @($skuIdHashTable[$skuId].PlansIncludedFriendlyName) + @(($subscribedSkuIdHashTable[$skuId].PlansIncludedFriendlyName | Where-Object { $_.AppliesTo -eq "User" }).ServicePlanName)
+                    }
+        
+                    "PlansIncludedName" = if ($skuIdHashTable[$skuId].PlansIncludedName.Length -eq 0 ) {
+                        @(($subscribedSkuIdHashTable[$skuId].PlansIncludedFriendlyName | Where-Object { $_.AppliesTo -eq "User" }).ServicePlanName)
+                    } else { 
+                        @($skuIdHashTable[$skuId].PlansIncludedName) + @(($subscribedSkuIdHashTable[$skuId].PlansIncludedFriendlyName | Where-Object { $_.AppliesTo -eq "User" }).ServicePlanName)
+                    }
+        
+                    "PlansIncludedIds" = if ($skuIdHashTable[$skuId].PlansIncludedIds.Length -eq 0 ) {
+                        @(($subscribedSkuIdHashTable[$skuId].PlansIncludedFriendlyName | Where-Object { $_.AppliesTo -eq "User" }).ServicePlanId)
+                    } else { 
+                        @($skuIdHashTable[$skuId].PlansIncludedIds) + @(($subscribedSkuIdHashTable[$skuId].PlansIncludedFriendlyName | Where-Object { $_.AppliesTo -eq "User" }).ServicePlanId)
+                    }
+                }
+                
+                $skuNameHashTable[$partDisplayName] = @{
+                    "SkuId" = $skuId
+                    "SkuPartNumber" = $partNumber
+                    "PlansIncludedFriendlyName" = $skuIdHashTable[$skuId].PlansIncludedFriendlyName
+                    "PlansIncludedName" = $skuIdHashTable[$skuId].PlansIncludedFriendlyName
+                    "PlansIncludedIds" = $skuIdHashTable[$skuId].PlansIncludedIds
                 }
             }
         }
@@ -286,7 +338,7 @@ function Get-MgAssignedLicenses {
         if ($PSCmdlet.ParameterSetName -match "Group") {
             try {
                 if ($GroupName) {
-                    $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                    $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
 
                 } else {
                     $groupObj = Get-MgGroup -GroupId $GroupId -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
@@ -506,7 +558,7 @@ function Get-MgAssignedLicenses {
                     $selection | Add-Member -MemberType NoteProperty -Name "GroupName" -Value $GroupName
                 }
 
-                $selection | Select-Object -ExcludeProperty More
+                $selection #| Select-Object -ExcludeProperty More
             }
         }
     }
@@ -614,7 +666,7 @@ function Update-MgAssignedLicensePlans {
         if ($PSCmdlet.ParameterSetName -match "Group") {
             try {
                 if ($GroupName) {
-                    $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                    $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
 
                 } else {
                     $groupObj = Get-MgGroup -GroupId $GroupId -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
@@ -876,7 +928,7 @@ function Add-MgAssignedLicense {
 
         if ($PSCmdlet.ParameterSetName -match "Group") {
             try {
-                $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
             
                 if ($null -eq $groupObj) {
                     throw "Couldn't find group '$GroupName'"
@@ -892,7 +944,7 @@ function Add-MgAssignedLicense {
         if ($PSCmdlet.ParameterSetName -match "User") {
             try {
                 if ($GroupName) {
-                    $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                    $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
 
                 } else {
                     $groupObj = Get-MgGroup -GroupId $GroupId -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
@@ -1024,7 +1076,7 @@ function Add-MgAssignedLicense {
             if ($PSCmdlet.ParameterSetName -match "User") {
                 Get-MgAssignedLicenses -UserPrincipalName $UserPrincipalName -SkuId $SkuId 
             }
-            
+
         } catch {
             throw "Something went wrong: $($_.Exception.Message)"
         }
@@ -1146,7 +1198,7 @@ function Remove-MgAssignedLicense {
 
         if ($PSCmdlet.ParameterSetName -match "Group") {
             try {
-                $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
+                $groupObj = Get-MgGroup -Filter "DisplayName eq '$GroupName'" -Property DisplayName,assignedLicenses,Id,LicenseAssignmentStates -ErrorAction Stop
             
                 if ($null -eq $groupObj) {
                     throw "Couldn't find group '$GroupName'"
