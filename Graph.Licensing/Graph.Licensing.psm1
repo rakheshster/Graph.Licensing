@@ -264,7 +264,7 @@ function Get-MgAssignedLicenses {
 
     <#
     .DESCRIPTION
-    SHow the licenses assigned to a group or user. By default it shows all the licenses and you can select one or more by pressing the SPACE key and then ENTER to see the plans of the licenses you selected.
+    Show the licenses assigned to a group or user. By default it shows all the licenses and you can select one or more by pressing the SPACE key and then ENTER to see the plans of the licenses you selected.
 
     .PARAMETER GroupName
     The Group you'd like to see the license assignments of. 
@@ -540,12 +540,12 @@ function Get-MgAssignedLicenses {
                     if ($SortPlansByState) {
                         $planStates | Sort-Object -Descending -Property { $_.State } | 
                             # Don't allow any selections
-                            Out-ConsoleGridView -OutputMode None -Title "Plans assigned to $targetSnippet2"
+                            Out-ConsoleGridView -OutputMode None -Title "Plans assigned to $targetSnippet2 via $($selection.AssignmentPath)"
     
                     } else {
                         $planStates | Sort-Object -Property { $_.PlanName } | 
                             # Don't allow any selections
-                            Out-ConsoleGridView -OutputMode None -Title "Plans assigned to $targetSnippet2"
+                            Out-ConsoleGridView -OutputMode None -Title "Plans assigned to $targetSnippet2 via $($selection.AssignmentPath)"
                     }
                 } 
             }
@@ -1168,6 +1168,8 @@ function Get-MgAvailableLicenses {
                         $userObj
                         $actualCounter++
                     }
+
+                    Write-Progress -Completed
                 }
 
                 $userSelections2 = $userObjsFiltered | 
